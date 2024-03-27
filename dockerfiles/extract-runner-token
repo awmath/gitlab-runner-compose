@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+
+echo RUNNER_TOKEN=$(sed -n 's/token = "\(.*\)"/\1/p' /etc/gitlab-runner/config.toml |head -n 1|tr -d ' ') > .env
+
+exec "$@"

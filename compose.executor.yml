@@ -1,0 +1,42 @@
+services:
+  pip-socket:
+    image: pip-socket-image
+    build: 
+      context: dockerfiles/
+      dockerfile: Dockerfile.podman
+    command: podman system service --time=0 unix:///var/run/sockets/podman.sock
+    volumes:
+      - docker-socket:/var/run/sockets/
+    privileged: true
+
+  docker:
+    image: pip-socket-image
+    build: 
+      context: dockerfiles/
+      dockerfile: Dockerfile.podman
+    command: podman system service --time=0 tcp://0.0.0.0:2375/
+    privileged: true
+
+  runner-run:
+    depends_on:
+      pip-socket:
+        condition: service_started
+      docker:
+        condition: service_started
+    image: docker.io/gitlab/gitlab-runner:latest
+    command: run-single
+    volumes:
+      - docker-socket:/var/run/sockets/
+    environment:
+      CI_SERVER_URL: https://gitlab.com/
+      DOCKER_HOST: unix:///var/run/sockets/podman.sock
+      DOCKER_IMAGE: alpine:latest
+      FEATURE_FLAGS: FF_NETWORK_PER_BUILD
+      DOCKER_NETWORK_MODE: host
+      DOCKER_PRIVILEGED: 1
+      DOCKER_SERVICES_PRIVILEGED: 1
+      RUNNER_EXECUTOR: docker
+      CI_SERVER_TOKEN: $RUNNER_TOKEN
+
+volumes:
+  docker-socket:

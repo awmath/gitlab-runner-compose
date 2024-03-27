@@ -1,0 +1,64 @@
+name: glab-compose-runner
+
+services:
+  socket:
+    image: pip-socket-image
+    build: 
+      context: dockerfiles/
+      dockerfile: Dockerfile.podman
+    command: podman system service --time=0 unix:///var/run/sockets/podman.sock
+    volumes:
+      - docker-socket:/var/run/sockets/
+    privileged: true
+
+  runner-unregister:
+    # just unregister with the same name
+    # this is allowed to fail
+    image: docker.io/gitlab/gitlab-runner:latest
+    entrypoint: bash
+    command: -c "gitlab-runner unregister -c /etc/gitlab-runner/config.toml --all-runners || exit 0"
+    volumes:
+      - glab-config:/etc/gitlab-runner/
+    environment:
+      CI_SERVER_URL: https://gitlab.com/
+      CI_SERVER_TOKEN: $GITLAB_REGISTRATION_TOKEN
+      
+  
+  runner-register:
+    depends_on:
+      runner-unregister:
+        condition: service_completed_successfully
+    image: docker.io/gitlab/gitlab-runner:latest
+    command: register --non-interactive --name $COMPOSE_PROJECT_NAME --leave-runner
+    volumes:
+      - glab-config:/etc/gitlab-runner/
+    environment:
+      CI_SERVER_URL: https://gitlab.com/
+      REGISTRATION_TOKEN: $GITLAB_REGISTRATION_TOKEN
+      RUNNER_EXECUTOR: docker
+      DOCKER_IMAGE: alpine:latest
+
+  executor:
+    image: glab-scaler-image
+    depends_on:
+      runner-register:
+        condition: service_completed_successfully
+    build: 
+      context: dockerfiles/
+      dockerfile: Dockerfile.podman-compose
+    privileged: true
+    command: podman compose --env-file .env -f /compose.yml up --abort-on-container-exit --force-recreate --renew-anon-volumes
+    restart: always
+    volumes:
+      - ./compose.executor.yml:/compose.yml
+      - ./dockerfiles:/dockerfiles
+      - docker-socket:/var/run/sockets
+      - glab-config:/etc/gitlab-runner/
+    environment:
+      COMPOSE_PROJECT_NAME: $COMPOSE_PROJECT_NAME
+      DOCKER_HOST: unix:///var/run/sockets/podman.sock
+      GITLAB_REGISTRATION_TOKEN: $GITLAB_REGISTRATION_TOKEN
+
+volumes:
+  docker-socket:
+  glab-config:

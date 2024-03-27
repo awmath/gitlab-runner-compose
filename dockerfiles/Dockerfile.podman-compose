@@ -1,0 +1,8 @@
+FROM quay.io/podman/stable:latest
+
+RUN dnf install -y podman-plugins podman-docker docker-compose #podman-compose
+COPY extract-runner-token /
+
+ENTRYPOINT [ "/extract-runner-token" ]
+
+# RUN sed -i 's/utsns=".*"/utsns="private"/g' /etc/containers/containers.conf
