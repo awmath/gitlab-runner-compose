@@ -20,3 +20,4 @@ runners with `GITLAB_REGISTRATION_TOKEN=... docker-compose scale executor=5`
 
 # TODO #
 - kill the gitlab single-run runner after every job
+- clean up leftover containers/volumes after each run
