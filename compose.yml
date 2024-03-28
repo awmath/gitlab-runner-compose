@@ -3,9 +3,7 @@ name: glab-compose-runner
 services:
   socket:
     image: pip-socket-image
-    build: 
-      context: dockerfiles/
-      dockerfile: Dockerfile.podman
+
     command: podman system service --time=0 unix:///var/run/sockets/podman.sock
     volumes:
       - docker-socket:/var/run/sockets/
@@ -16,7 +14,7 @@ services:
     # this is allowed to fail
     image: docker.io/gitlab/gitlab-runner:latest
     entrypoint: bash
-    command: -c "gitlab-runner unregister -c /etc/gitlab-runner/config.toml --all-runners || exit 0"
+    command: -c "gitlab-runner unregister --all-runners || true; echo "" >  /etc/gitlab-runner/config.toml"
     volumes:
       - glab-config:/etc/gitlab-runner/
     environment:
@@ -38,20 +36,36 @@ services:
       RUNNER_EXECUTOR: docker
       DOCKER_IMAGE: alpine:latest
 
+  image-loader:
+    image: docker
+    depends_on:
+      socket:
+        condition: service_started
+    privileged: true
+    entrypoint:
+    command: docker load -i /buildcache/pip-socket-image.tar
+    volumes:
+      - ./buildcache:/buildcache
+      - docker-socket:/var/run/sockets/
+    environment:
+      DOCKER_HOST: unix:///var/run/sockets/podman.sock
+
   executor:
     image: glab-scaler-image
     depends_on:
+      socket:
+        condition: service_started
+      image-loader:
+        condition: service_completed_successfully
       runner-register:
         condition: service_completed_successfully
     build: 
-      context: dockerfiles/
-      dockerfile: Dockerfile.podman-compose
+      context: dockerfiles/executor/
+      dockerfile: Dockerfile
     privileged: true
-    command: podman compose --env-file .env -f /compose.yml up --abort-on-container-exit --force-recreate --renew-anon-volumes
     restart: always
     volumes:
-      - ./compose.executor.yml:/compose.yml
-      - ./dockerfiles:/dockerfiles
+      - ./buildcache:/buildcache
       - docker-socket:/var/run/sockets
       - glab-config:/etc/gitlab-runner/
     environment:
